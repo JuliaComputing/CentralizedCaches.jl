@@ -6,5 +6,14 @@ using Aqua
     @testset "Code quality (Aqua.jl)" begin
         Aqua.test_all(CentralizedCaches)
     end
-    # Write your tests here.
+    
+    @testset "functionality" begin
+        cache1 = new_cache(Dict{Int, Int})
+        get!(cache1, 2) do 
+            4
+        end
+        @assert haskey(cache1, 2)
+        clear_all_caches!()
+        @test isempty(cache1)
+    end
 end
