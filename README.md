@@ -18,5 +18,8 @@ It is thread-safe, and doesn't leak memory.
 We expose just two functions `new_cache(T, args...; kwargs...)` to create new tracked caches by calling `T(args...; kwargs...)`;
 and `clear_all_caches()!` which calls `empty!` on all caches that are tracked (and haven't been GCed already).
 
+Generally you would never all `clear_all_caches` in your code, but rather you would call it manually from the REPL while interactively developing.
 
+Be generally aware that declaring a cache using `new_cache` means someone else (developing some other package) might cause it to be cleared.
+By the nature of it being a cache this should always be fine, but exceptions are exceptional.
 
