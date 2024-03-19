@@ -1,7 +1,7 @@
 name = "CentralizedCaches"
 uuid = "d1073d05-2d26-4019-b855-dfa0385fef5e"
 authors = ["JuliaHub Inc."]
-version = "1.0.0-DEV"
+version = "1.0.0"
 
 [compat]
 julia = "1.10"
