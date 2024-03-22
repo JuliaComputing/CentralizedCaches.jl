@@ -45,32 +45,40 @@ Clears all the caches under the listed keys that we are tracking, by calling `em
 Remembering that the first (and often only) key is the module the cache was declared from.
 
 Note that calling this without any arguments will clear all caches from all modules.
-Which might not be safe if e.g. code in a background thread is accessing a cache that you don't know about(y)
+Which might not be safe if e.g. code in a background thread is accessing a cache that you don't know about.
 """
 function clear_all_caches!(keys...)
+    local caches_to_clear
     lock(ALL_CACHES_LOCK) do 
         cur_level= ALL_CACHES
         for key in keys
             if !haskey(cur_level, key)
-                @info "No Caches found" keys
+                @info "No caches found" keys
                 return
             end
             cur_level = cur_level[key]
         end
-        _clear_all_below(cur_level)
+        caches_to_clear = _all_below(cur_level)
     end
+    foreach(empty_if_present!, caches_to_clear)
 end
 
-function _clear_all_below(cur_level)
+
+
+function _all_below(cur_level)
+    ret = WeakRef[]
     for val in values(cur_level)
         if val isa WeakRef
-            empty_if_present!(val.value)
+            push!(ret, val)
         else
-            _clear_all_below(val)
+            append!(ret, _all_below(val))
         end
-    end            
+    end
+    return ret
 end
 
+
+empty_if_present!(x::WeakRef) = empty_if_present!(x.value)
 empty_if_present!(::Nothing)=nothing
 empty_if_present!(x) = empty!(x)
 
