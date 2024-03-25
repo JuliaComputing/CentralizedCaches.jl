@@ -1,50 +1,88 @@
 module CentralizedCaches
 
-export new_cache, clear_all_caches!
+export @new_cache, clear_all_caches!
 
-const ALL_CACHES = WeakRef[]
+const ALL_CACHES = Dict{Module, Any}()
 const ALL_CACHES_LOCK = ReentrantLock()
 
 """
-    new_cache(T, args...; kwargs...)
+    @new_cache(cache, keys...)
 
-Creates a new cache by calling `T(args...; kwargs...)`.
+register a new cache (`cache`) to be tracked by  CentralizedCaches
 The only requirement on `T` is that it must implement `empty!(::T)`.
 
 This will be tracked by CentralizedCaches.jl, such that it can be cleared using [`clear_all_caches`](@ref).
+
+
+Example useage:
+ - `@new_cache Dict()` creates a new `Dict` cache registered only by the module
+ - `@new_cache IdDict() :solves` creates a new `IdDict` cache registered by module name and the key `:solves`
 """
-function new_cache(type, args...; kwargs...)
-    ret = type(args...; kwargs...)
+macro new_cache(cache, keys...)
+    :($_new_cache($(esc(cache)), @__MODULE__, $(esc.(keys)...)))
+end
+
+function _new_cache(cache, keys...)
+    cur_lvl = ALL_CACHES
     lock(ALL_CACHES_LOCK) do
-        push!(ALL_CACHES, WeakRef(ret))
+        for key in keys
+            cur_lvl = get!(Dict, cur_lvl, key)
+        end
+        cur_lvl[CacheKey(length(cur_lvl))] = WeakRef(cache)
+    end
+    return cache
+end
+
+# A dummy struct to make sure that nothing that could be used as a Key can collide with the placeholer key used for a cache
+struct CacheKey
+    id::Int
+end
+
+"""
+    clear_all_caches!(keys...)
+
+Clears all the caches under the listed keys that we are tracking, by calling `empty!` on them.
+Remembering that the first (and often only) key is the module the cache was declared from.
+
+Note that calling this without any arguments will clear all caches from all modules.
+Which might not be safe if e.g. code in a background thread is accessing a cache that you don't know about.
+"""
+function clear_all_caches!(keys...)
+    local caches_to_clear
+    lock(ALL_CACHES_LOCK) do 
+        cur_level= ALL_CACHES
+        for key in keys
+            if !haskey(cur_level, key)
+                @info "No caches found" keys
+                return
+            end
+            cur_level = cur_level[key]
+        end
+        caches_to_clear = _all_below(cur_level)
+    end
+    foreach(empty_if_present!, caches_to_clear)
+end
+
+
+
+function _all_below(cur_level)
+    ret = WeakRef[]
+    for val in values(cur_level)
+        if val isa WeakRef
+            push!(ret, val)
+        else
+            append!(ret, _all_below(val))
+        end
     end
     return ret
 end
 
 
-"""
-    clear_all_caches!()
-
-Clears all the caches that we are tracking, by calling `empty!` on them.
-Also clears out our internal null references to caches that have already been GC'd
-"""
-function clear_all_caches!()
-    lock(ALL_CACHES_LOCK) do 
-        for wref in ALL_CACHES
-            empty_if_present!(wref.value)
-        end
-
-        # Now is an opertune time to clear out WeakRef's that reference things that have been GC'd
-        # since presumably user is not in a performance critical part of code.
-        filter!(ALL_CACHES) do wref
-            !isnothing(wref.value)
-        end
-    end
-end
-
+empty_if_present!(x::WeakRef) = empty_if_present!(x.value)
 empty_if_present!(::Nothing)=nothing
 empty_if_present!(x) = empty!(x)
 
 
+include("deprecated.jl")
 
 end
